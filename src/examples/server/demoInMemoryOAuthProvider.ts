@@ -34,6 +34,7 @@ export class DemoInMemoryAuthProvider implements OAuthServerProvider {
     params: AuthorizationParams,
     client: OAuthClientInformationFull}>();
   private tokens = new Map<string, AuthInfo>();
+  private refreshTokens = new Map<string, AuthInfo>();
 
   async authorize(
     client: OAuthClientInformationFull,
@@ -54,7 +55,7 @@ export class DemoInMemoryAuthProvider implements OAuthServerProvider {
       params
     });
 
-    const targetUrl = new URL(client.redirect_uris[0]);
+    const targetUrl = new URL(params.redirectUri);
     targetUrl.search = searchParams.toString();
     res.redirect(targetUrl.toString());
   }
@@ -90,37 +91,94 @@ export class DemoInMemoryAuthProvider implements OAuthServerProvider {
     }
 
     this.codes.delete(authorizationCode);
-    const token = randomUUID();
+    const accessToken = randomUUID();
+    const refreshToken = randomUUID();
 
     const tokenData = {
-      token,
+      token: accessToken,
       clientId: client.client_id,
       scopes: codeData.params.scopes || [],
-      expiresAt: Date.now() + 3600000, // 1 hour
-      type: 'access'
+      expiresAt: Math.floor((Date.now() + 600000) / 1000), // 10 minutes
     };
 
-    this.tokens.set(token, tokenData);
+    const refreshTokenData = {
+      token: refreshToken,
+      clientId: client.client_id,
+      scopes: codeData.params.scopes || [],
+      expiresAt: Math.floor((Date.now() + 7 * 24 * 3600000) / 1000), // 7 days
+    };
+
+    this.tokens.set(accessToken, tokenData);
+    this.refreshTokens.set(refreshToken, refreshTokenData);
 
     return {
-      access_token: token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       token_type: 'bearer',
-      expires_in: 3600,
+      expires_in: 600, // 10 minutes
       scope: (codeData.params.scopes || []).join(' '),
     };
   }
 
   async exchangeRefreshToken(
-    _client: OAuthClientInformationFull,
-    _refreshToken: string,
-    _scopes?: string[]
+    client: OAuthClientInformationFull,
+    refreshToken: string,
+    scopes?: string[]
   ): Promise<OAuthTokens> {
-    throw new Error('Not implemented for example demo');
+    // Check if refresh token exists and is valid
+    const existingTokenData = this.refreshTokens.get(refreshToken);
+    if (!existingTokenData) {
+      throw new Error('Invalid refresh token');
+    }
+
+    if (existingTokenData.clientId !== client.client_id) {
+      throw new Error('Refresh token was not issued to this client');
+    }
+
+    // Check if refresh token is expired
+    if (existingTokenData.expiresAt && existingTokenData.expiresAt < Math.floor(Date.now() / 1000)) {
+      this.refreshTokens.delete(refreshToken);
+      throw new Error('Refresh token has expired');
+    }
+
+    // Remove the old refresh token
+    this.refreshTokens.delete(refreshToken);
+
+    // Generate new access token
+    const newAccessToken = randomUUID();
+    const newRefreshToken = randomUUID();
+
+    // Use provided scopes or fall back to existing scopes
+    const tokenScopes = scopes || existingTokenData.scopes;
+
+    // Store new access token
+    this.tokens.set(newAccessToken, {
+      token: newAccessToken,
+      clientId: client.client_id,
+      scopes: tokenScopes,
+      expiresAt: Math.floor((Date.now() + 600000) / 1000), // 10 minutes
+    });
+
+    // Store new refresh token
+    this.refreshTokens.set(newRefreshToken, {
+      token: newRefreshToken,
+      clientId: client.client_id,
+      scopes: tokenScopes,
+      expiresAt: Math.floor((Date.now() + 7 * 24 * 3600000) / 1000), // 7 days
+    });
+
+    return {
+      access_token: newAccessToken,
+      refresh_token: newRefreshToken,
+      token_type: 'bearer',
+      expires_in: 600, // 10 minutes
+      scope: tokenScopes.join(' '),
+    };
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
     const tokenData = this.tokens.get(token);
-    if (!tokenData || !tokenData.expiresAt || tokenData.expiresAt < Date.now()) {
+    if (!tokenData || (tokenData.expiresAt && tokenData.expiresAt < Math.floor(Date.now() / 1000))) {
       throw new Error('Invalid or expired token');
     }
 
@@ -128,7 +186,7 @@ export class DemoInMemoryAuthProvider implements OAuthServerProvider {
       token,
       clientId: tokenData.clientId,
       scopes: tokenData.scopes,
-      expiresAt: Math.floor(tokenData.expiresAt / 1000),
+      expiresAt: tokenData.expiresAt,
     };
   }
 }
