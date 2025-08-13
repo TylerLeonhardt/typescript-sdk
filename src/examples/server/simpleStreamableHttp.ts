@@ -7,8 +7,6 @@ import { getOAuthProtectedResourceMetadataUrl, mcpAuthMetadataRouter } from '../
 import { requireBearerAuth } from '../../server/auth/middleware/bearerAuth.js';
 import { CallToolResult, GetPromptResult, isInitializeRequest, PrimitiveSchemaDefinition, ReadResourceResult, ResourceLink } from '../../types.js';
 import { InMemoryEventStore } from '../shared/inMemoryEventStore.js';
-import { setupAuthServer } from './demoInMemoryOAuthProvider.js';
-import { OAuthMetadata } from 'src/shared/auth.js';
 import { checkResourceAllowed } from 'src/shared/auth-utils.js';
 
 import cors from 'cors';
@@ -423,7 +421,6 @@ const getServer = () => {
 };
 
 const MCP_PORT = process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000;
-const AUTH_PORT = process.env.MCP_AUTH_PORT ? parseInt(process.env.MCP_AUTH_PORT, 10) : 3001;
 
 const app = express();
 app.use(express.json());
@@ -439,34 +436,11 @@ let authMiddleware = null;
 if (useOAuth) {
   // Create auth middleware for MCP endpoints
   const mcpServerUrl = new URL(`http://localhost:${MCP_PORT}/mcp`);
-  const authServerUrl = new URL(`http://localhost:${AUTH_PORT}`);
-
-  const oauthMetadata: OAuthMetadata = setupAuthServer({ authServerUrl, mcpServerUrl, strictResource: strictOAuth });
-
   const tokenVerifier = {
     verifyAccessToken: async (token: string) => {
-      const endpoint = oauthMetadata.introspection_endpoint;
-
-      if (!endpoint) {
-        throw new Error('No token verification endpoint available in metadata');
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          token: token
-        }).toString()
-      });
-
-
-      if (!response.ok) {
-        throw new Error(`Invalid or expired token: ${await response.text()}`);
-      }
-
-      const data = await response.json();
+      // for demo purposes only
+      const data = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      console.log('Token claims:', data);
 
       if (strictOAuth) {
         if (!data.aud) {
@@ -488,9 +462,16 @@ if (useOAuth) {
   }
   // Add metadata routes to the main MCP server
   app.use(mcpAuthMetadataRouter({
-    oauthMetadata,
+    oauthMetadata: {
+      issuer: 'https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0',
+
+      // Unused
+      authorization_endpoint: 'https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/v2.0/authorize',
+      response_types_supported: ['code'],
+      token_endpoint: 'https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/v2.0/token',
+    },
     resourceServerUrl: mcpServerUrl,
-    scopesSupported: ['mcp:tools'],
+    scopesSupported: ['api://a4fd7674-4ebd-4dbc-831c-338314dd459e/myCoolScope'],
     resourceName: 'MCP Demo Server',
   }));
 
