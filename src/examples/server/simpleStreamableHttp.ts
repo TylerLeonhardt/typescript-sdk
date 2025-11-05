@@ -19,6 +19,7 @@ import { OAuthMetadata } from 'src/shared/auth.js';
 import { checkResourceAllowed } from 'src/shared/auth-utils.js';
 
 import cors from 'cors';
+import { InvalidTokenError } from 'src/server/auth/errors.js';
 
 // Check for OAuth flag
 const useOAuth = process.argv.includes('--oauth');
@@ -458,6 +459,7 @@ app.use(
 
 // Set up OAuth if enabled
 let authMiddleware = null;
+let greetToolAuthMiddleware = null;
 if (useOAuth) {
     // Create auth middleware for MCP endpoints
     const mcpServerUrl = new URL(`http://localhost:${MCP_PORT}/mcp`);
@@ -484,7 +486,7 @@ if (useOAuth) {
             });
 
             if (!response.ok) {
-                throw new Error(`Invalid or expired token: ${await response.text()}`);
+                throw new InvalidTokenError(`Invalid or expired token: ${await response.text()}`);
             }
 
             const data = await response.json();
@@ -520,6 +522,13 @@ if (useOAuth) {
     authMiddleware = requireBearerAuth({
         verifier: tokenVerifier,
         requiredScopes: [],
+        resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpServerUrl)
+    });
+    
+    // Special auth middleware for the greet tool that requires specific scopes
+    greetToolAuthMiddleware = requireBearerAuth({
+        verifier: tokenVerifier,
+        requiredScopes: ['mcp:tools', 'mcp:tools-big'],
         resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpServerUrl)
     });
 }
@@ -606,8 +615,20 @@ const mcpPostHandler = async (req: Request, res: Response) => {
 };
 
 // Set up routes with conditional auth middleware
-if (useOAuth && authMiddleware) {
-    app.post('/mcp', authMiddleware, mcpPostHandler);
+if (useOAuth && authMiddleware && greetToolAuthMiddleware) {
+    // Create a wrapper middleware that applies different auth rules based on the request
+    const conditionalAuthMiddleware: express.RequestHandler = (req, res, next) => {
+        // Check if this is a tool call request for the greet tool
+        if (req.body && req.body.method === 'tools/call' && req.body.params && req.body.params.name === 'greet') {
+            // Use the greet tool auth middleware
+            greetToolAuthMiddleware(req, res, next);
+        } else {
+            // Use the normal auth middleware for all other requests
+            authMiddleware(req, res, next);
+        }
+    };
+    
+    app.post('/mcp', conditionalAuthMiddleware, mcpPostHandler);
 } else {
     app.post('/mcp', mcpPostHandler);
 }

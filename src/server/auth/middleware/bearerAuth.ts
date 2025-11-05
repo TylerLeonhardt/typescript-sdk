@@ -71,16 +71,17 @@ export function requireBearerAuth({ verifier, requiredScopes = [], resourceMetad
             req.auth = authInfo;
             next();
         } catch (error) {
+            const scope = requiredScopes.length > 0 ? `, scope="${requiredScopes.join(' ')}"` : '';
             if (error instanceof InvalidTokenError) {
                 const wwwAuthValue = resourceMetadataUrl
-                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
-                    : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
+                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"${scope}`
+                    : `Bearer error="${error.errorCode}", error_description="${error.message}"${scope}`;
                 res.set('WWW-Authenticate', wwwAuthValue);
                 res.status(401).json(error.toResponseObject());
             } else if (error instanceof InsufficientScopeError) {
                 const wwwAuthValue = resourceMetadataUrl
-                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
-                    : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
+                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"${scope}`
+                    : `Bearer error="${error.errorCode}", error_description="${error.message}"${scope}`;
                 res.set('WWW-Authenticate', wwwAuthValue);
                 res.status(403).json(error.toResponseObject());
             } else if (error instanceof ServerError) {
