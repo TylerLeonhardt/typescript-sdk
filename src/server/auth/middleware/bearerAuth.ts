@@ -37,7 +37,7 @@ declare module 'express-serve-static-core' {
  * If resourceMetadataUrl is provided, it will be included in the WWW-Authenticate header
  * for 401 responses as per the OAuth 2.0 Protected Resource Metadata spec.
  */
-export function requireBearerAuth({ verifier, requiredScopes = [], resourceMetadataUrl }: BearerAuthMiddlewareOptions): RequestHandler {
+export function requireBearerAuth({ verifier, requiredScopes = [] }: BearerAuthMiddlewareOptions): RequestHandler {
     return async (req, res, next) => {
         try {
             const authHeader = req.headers.authorization;
@@ -72,16 +72,16 @@ export function requireBearerAuth({ verifier, requiredScopes = [], resourceMetad
             next();
         } catch (error) {
             if (error instanceof InvalidTokenError) {
-                const wwwAuthValue = resourceMetadataUrl
-                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
-                    : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
-                res.set('WWW-Authenticate', wwwAuthValue);
+                // const wwwAuthValue = resourceMetadataUrl
+                //     ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
+                //     : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
+                // res.set('WWW-Authenticate', wwwAuthValue);
                 res.status(401).json(error.toResponseObject());
             } else if (error instanceof InsufficientScopeError) {
-                const wwwAuthValue = resourceMetadataUrl
-                    ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
-                    : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
-                res.set('WWW-Authenticate', wwwAuthValue);
+                // const wwwAuthValue = resourceMetadataUrl
+                //     ? `Bearer error="${error.errorCode}", error_description="${error.message}", resource_metadata="${resourceMetadataUrl}"`
+                //     : `Bearer error="${error.errorCode}", error_description="${error.message}"`;
+                // res.set('WWW-Authenticate', wwwAuthValue);
                 res.status(403).json(error.toResponseObject());
             } else if (error instanceof ServerError) {
                 res.status(500).json(error.toResponseObject());
